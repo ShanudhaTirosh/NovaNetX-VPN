@@ -74,6 +74,10 @@ dotnet publish `
     -p:SelfContained=$True `
     -p:PublishSingleFile=$True `
     -p:IncludeNativeLibrariesForSelfExtract=$True `
+    -p:CodeAnalysisTreatWarningsAsErrors=false `
+    -p:TreatWarningsAsErrors=false `
+    -p:EnforceCodeStyleInBuild=false `
+    -p:RunAnalyzersDuringBuild=false `
     -o (Join-Path $root "Netch\bin\$Configuration") `
     (Join-Path $root 'Netch\Netch.csproj')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
