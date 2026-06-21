@@ -64,6 +64,38 @@ if (Test-Path $otherRelease) {
     Write-Warning "No Other/ helpers were produced; shipping core client only."
 }
 
+# ----------------------------------- backfill missing helpers (best-effort) --
+# Some helpers are built from fragile upstream sources (v2ray-sn) or downloads
+# (wintun). If our build didn't produce them, pull the exact compatible binaries
+# from the upstream Netch release so the client is fully functional.
+$required = @('v2ray-sn.exe', 'wintun.dll')
+$missing = $required | Where-Object { -Not (Test-Path (Join-Path $bin $_)) }
+if ($missing) {
+    Write-Section "Backfilling helpers from upstream Netch release: $($missing -join ', ')"
+    try {
+        $headers = @{ 'User-Agent' = 'novanetx-ci' }
+        $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/netchx/netch/releases/latest' -Headers $headers
+        $asset = $rel.assets | Where-Object { $_.name -like '*.7z' -or $_.name -like '*.zip' } | Select-Object -First 1
+        $tmp = Join-Path $root 'upstream-netch'
+        if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+        New-Item -ItemType Directory -Path $tmp | Out-Null
+        $arc = Join-Path $tmp $asset.name
+        Write-Host "Downloading $($asset.name) ($($rel.tag_name)) ..."
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $arc
+        if ($asset.name -like '*.7z') { 7z x $arc "-o$tmp" -y | Out-Null }
+        else { Expand-Archive -Force -Path $arc -DestinationPath $tmp }
+        foreach ($f in $missing) {
+            $found = Get-ChildItem -Recurse -Path $tmp -Filter $f -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { Copy-Item -Force $found.FullName $bin; Write-Host "  backfilled $f" }
+            else { Write-Warning "  $f not found in upstream release" }
+        }
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    } catch {
+        Write-Warning "Helper backfill failed (continuing): $_"
+    }
+    Set-Location $root
+}
+
 # ------------------------------------------------------- .NET app (req) ------
 Write-Section 'Building NovaNetX VPN (.NET)'
 Set-Location $root
